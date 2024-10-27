@@ -1,5 +1,4 @@
 defmodule Nerves.IO.RC522 do
-
   @moduledoc """
   Worker module that spawns the RC522 port process and handles all communication.
   """
@@ -12,14 +11,13 @@ defmodule Nerves.IO.RC522 do
     GenServer.start_link(__MODULE__, [callback], name: __MODULE__)
   end
 
-
   defmodule State do
     @moduledoc false
     defstruct port: nil, callback: nil
   end
 
   def init([callback]) do
-    Logger.info "RC522 worker starting"
+    Logger.info("RC522 worker starting")
     state = %State{callback: callback}
     {:ok, state, 0}
   end
@@ -44,19 +42,19 @@ defmodule Nerves.IO.RC522 do
   end
 
   def handle_info(unknown, state) do
-    Logger.info "Huh? #{inspect unknown}"
+    Logger.info("Huh? #{inspect(unknown)}")
     {:noreply, state}
   end
 
-
   defp restart(state) do
-    executable = :code.priv_dir(:nerves_io_rc522) ++ '/rc522'
-    port = Port.open({:spawn_executable, executable},
-                     [{:args, args()},
-                      {:packet, 2},
-                      :use_stdio,
-                      :binary,
-                      :exit_status])
+    executable = :code.priv_dir(:nerves_io_rc522) ++ ~c"/rc522"
+
+    port =
+      Port.open(
+        {:spawn_executable, executable},
+        [{:args, args()}, {:packet, 2}, :use_stdio, :binary, :exit_status]
+      )
+
     %State{state | port: port}
   end
 
@@ -68,14 +66,14 @@ defmodule Nerves.IO.RC522 do
     apply(m, f, [tag])
   end
 
-  @env Mix.env
+  @env Mix.env()
   defp args() do
     case @env do
       :test ->
-        ["test"];
+        ["test"]
+
       _ ->
         [Integer.to_string(5000)]
     end
   end
-
 end

@@ -35,7 +35,7 @@ defmodule NervesIoRc522.Mixfile do
 
   defp deps do
     [
-      {:elixir_make, "~> 0.3"}
+      {:elixir_make, "~> 0.8"}
     ]
   end
 end
