@@ -66,6 +66,10 @@ defmodule Nerves.IO.RC522 do
     apply(m, f, [tag])
   end
 
+  defp handle_cmd(unknown, state) do
+    Logger.info("[RC522] Unknown cmd: #{inspect(unknown)}\nState: #{inspect(state)}")
+  end
+
   @env Mix.env()
   defp args() do
     case @env do
