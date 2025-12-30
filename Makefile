@@ -47,7 +47,7 @@ CFLAGS += -I$(LIBLGPIO_DIR)
 # Clone and build liblgpio
 $(LIBLGPIO_DIR):
 	git clone $(LIBLGPIO_REPO) $(LIBLGPIO_DIR)
-	cd $(LIBLGPIO_DIR) && make CC=$(CC) CFLAGS="$(CFLAGS)" LDFLAGS="$(ERL_LDFLAGS)"
+	cd $(LIBLGPIO_DIR) && make CC=$(CC) CFLAGS="$(CFLAGS)" LDFLAGS="$(LDFLAGS)"
 
 # Ensure liblgpio is built before building the main target
 all: $(LIBLGPIO_DIR) priv/rc522
