@@ -23,8 +23,18 @@ defmodule Nerves.IO.RC522 do
   end
 
   def handle_info({port, {:data, data}}, state = %State{port: port}) do
-    cmd = :erlang.binary_to_term(data)
-    handle_cmd(cmd, state)
+    Logger.debug("RC522 raw data received: #{inspect(data)}")
+
+    try do
+      cmd = :erlang.binary_to_term(data)
+      Logger.debug("RC522 decoded command: #{inspect(cmd)}")
+      handle_cmd(cmd, state)
+    rescue
+      e ->
+        Logger.error("Failed to decode RC522 data: #{inspect(e)}")
+        Logger.error("Raw data was: #{inspect(data)}")
+    end
+
     {:noreply, state}
   end
 
@@ -42,7 +52,7 @@ defmodule Nerves.IO.RC522 do
   end
 
   def handle_info(unknown, state) do
-    Logger.info("Huh? #{inspect(unknown)}")
+    Logger.warning("RC522 received unknown message: #{inspect(unknown)}")
     {:noreply, state}
   end
 
@@ -58,7 +68,15 @@ defmodule Nerves.IO.RC522 do
     port =
       Port.open(
         {:spawn_executable, executable},
-        [{:args, args()}, {:packet, 2}, :use_stdio, :binary, :exit_status]
+        [
+          {:args, args()},
+          {:packet, 2},
+          :use_stdio,
+          :binary,
+          :exit_status,
+          # Redirect stderr to stdout so we can capture it
+          :stderr_to_stdout
+        ]
       )
 
     %State{state | port: port}
