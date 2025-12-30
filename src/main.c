@@ -29,6 +29,10 @@ void send_tag(const char *uid, size_t len);
 
 void send_log(const char *level, const char *msg)
 {
+    // Also print to stderr for debugging
+    fprintf(stderr, "[%s] %s", level, msg);
+    fflush(stderr);
+
     char resp[1024];
     int resp_index = sizeof(uint16_t); // Space for payload size
     ei_encode_version(resp, &resp_index);
@@ -56,10 +60,14 @@ int main(int argc, char *argv[])
 
     uint32_t spi_speed = 10000000L;
 
+    dbg("RC522 main starting");
+
     if (argc != 2)
     {
         err(1, "Usage: rc522 <spi_speed|test>");
     }
+
+    dbg("Arguments parsed");
 
     // test mode; send tag to host every second
     if (!strcmp(argv[1], "test"))
@@ -73,16 +81,24 @@ int main(int argc, char *argv[])
     }
 
     spi_speed = (uint32_t)strtoul(argv[1], NULL, 10);
+    dbg("SPI speed parsed");
     if (spi_speed > 125000L)
         spi_speed = 125000L;
     if (spi_speed < 4)
         spi_speed = 4;
+
+    char spi_msg[128];
+    sprintf(spi_msg, "Initializing SPI with speed: %lu", spi_speed);
+    dbg(spi_msg);
 
     if (spi_init(spi_speed))
     {
         err(1, "SPI initialization failed.");
     }
 
+    dbg("SPI initialization successful");
+
+    dbg("Initializing RC522");
     InitRc522();
 
     dbg("RC522 loop start");
@@ -125,27 +141,53 @@ int main(int argc, char *argv[])
 uint8_t spi_init(uint32_t spi_speed)
 {
     int h;
+    char err_msg[256];
+
+    dbg("Opening GPIO chip");
     h = lgGpiochipOpen(0); // Open GPIO chip 0
     if (h < 0)
     {
-        dbg("Can't open GPIO chip!");
+        sprintf(err_msg, "Can't open GPIO chip! Error code: %d", h);
+        dbg(err_msg);
         return 1;
     }
+
+    dbg("GPIO chip opened successfully");
 
     // Configure RST pin (GPIO25) as output
-    if (lgGpioClaimOutput(h, 0, 25, 1) < 0) // Set GPIO25 high
+    dbg("Configuring RST pin (GPIO25) - Physical pin 22");
+    int rst_result = lgGpioClaimOutput(h, 0, 25, 1); // Set GPIO25 high
+    if (rst_result < 0)
     {
-        dbg("Can't configure RST pin!");
+        sprintf(err_msg, "Can't configure RST pin (GPIO25)! Error code: %d", rst_result);
+        dbg(err_msg);
         return 1;
     }
 
+    dbg("RST pin configured successfully");
+
+    // Configure IRQ pin (GPIO18) as input
+    dbg("Configuring IRQ pin (GPIO18) - Physical pin 18");
+    int irq_result = lgGpioClaimInput(h, 0, 18);
+    if (irq_result < 0)
+    {
+        sprintf(err_msg, "Can't configure IRQ pin (GPIO18)! Error code: %d", irq_result);
+        dbg(err_msg);
+        return 1;
+    }
+
+    dbg("IRQ pin configured successfully");
+
+    dbg("Opening SPI interface");
     int spi_handle = lgSpiOpen(0, 0, spi_speed, 0); // Open SPI on bus 0, chip select 0
     if (spi_handle < 0)
     {
-        dbg("Can't open SPI device!");
+        sprintf(err_msg, "Can't open SPI device! Error code: %d", spi_handle);
+        dbg(err_msg);
         return 1;
     }
 
+    dbg("SPI device opened successfully");
     return 0;
 }
 
