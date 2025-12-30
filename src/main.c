@@ -19,11 +19,26 @@
 #include <ei.h>
 
 #define err(code, msg) (fprintf(stderr, msg "\n"), exit(code));
-#define dbg(msg) (fprintf(stderr, msg "\n"));
+#define dbg(msg) (send_log("debug", msg "\n"));
 
 void erlcmd_send(char *response, size_t len);
 uint8_t spi_init(uint32_t spi_speed);
 void send_tag(const char *uid, size_t len);
+
+void send_log(const char *level, const char *msg)
+{
+    char resp[1024];
+    int resp_index = sizeof(uint16_t); // Space for payload size
+    ei_encode_version(resp, &resp_index);
+
+    // Encode the log message as a tuple: {log, Level, Message}
+    ei_encode_tuple_header(resp, &resp_index, 3);
+    ei_encode_atom(resp, &resp_index, "log");
+    ei_encode_atom(resp, &resp_index, level);
+    ei_encode_string(resp, &resp_index, msg);
+
+    erlcmd_send(resp, resp_index);
+}
 
 int main(int argc, char *argv[])
 {

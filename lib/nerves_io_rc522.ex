@@ -46,6 +46,12 @@ defmodule Nerves.IO.RC522 do
     {:noreply, state}
   end
 
+  # Logs from c code
+  def handle_info({:log, level, message}, state) do
+    Logger.log(String.to_atom(level), message)
+    {:noreply, state}
+  end
+
   defp restart(state) do
     executable = :code.priv_dir(:nerves_io_rc522) ++ ~c"/rc522"
 
