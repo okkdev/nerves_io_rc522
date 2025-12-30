@@ -114,6 +114,13 @@ uint8_t spi_init(uint32_t spi_speed)
         return 1;
     }
 
+    // Configure RST pin (GPIO25) as output
+    if (lgGpioClaimOutput(h, 0, 25, 1) < 0) // Set GPIO25 high
+    {
+        dbg("Can't configure RST pin!");
+        return 1;
+    }
+
     int spi_handle = lgSpiOpen(0, 0, spi_speed, 0); // Open SPI on bus 0, chip select 0
     if (spi_handle < 0)
     {
