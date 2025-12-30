@@ -26,6 +26,8 @@ Furthermore, this library currently only reads the tag UID. The RC522
 supports reading and writing MIFARE tag data, but this library does
 not yet support it.
 
+TODO: update with rpi5 info
+
 
 ## Installation
 
