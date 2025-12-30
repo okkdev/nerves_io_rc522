@@ -5,10 +5,19 @@
 #include "main.h"
 #include <lgpio.h>
 
+void send_log(const char *level, const char *msg);
+
+#define err(code, msg) (fprintf(stderr, msg "\n"), send_log("error", msg "\n"), exit(code));
+#define dbg(msg) (send_log("debug", msg "\n"));
+
+void erlcmd_send(char *response, size_t len);
+
 void InitRc522(void)
 {
+	dbg("RC522 initialization start");
 	PcdReset();
 	PcdAntennaOn();
+	dbg("RC522 initialization end");
 }
 
 char PcdRequest(uint8_t req_code, uint8_t *pTagType)
@@ -266,6 +275,8 @@ char PcdReset(void)
 	WriteRawRC(CWGsCfgReg, 0x2f);
 	//	WriteRawRC(ModWidthReg,0x2f);
 
+	dbg("RC522 reset complete");
+
 	return TAG_OK;
 }
 
@@ -435,6 +446,33 @@ char PcdComMF522(uint8_t Command,
 	return status;
 }
 
+/**
+ * @brief Synchronously send a response back to Erlang
+ *
+ * @param response what to send back
+ */
+void erlcmd_send(char *response, size_t len)
+{
+	uint16_t be_len = htons(len - sizeof(uint16_t));
+	memcpy(response, &be_len, sizeof(be_len));
+
+	size_t wrote = 0;
+	do
+	{
+		ssize_t amount_written = write(STDOUT_FILENO, response + wrote, len - wrote);
+		if (amount_written < 0)
+		{
+			if (errno == EINTR)
+				continue;
+
+			// err(EXIT_FAILURE, "write");
+			exit(0);
+		}
+
+		wrote += amount_written;
+	} while (wrote < len);
+}
+
 void PcdAntennaOn(void)
 {
 	uint8_t i;
@@ -443,9 +481,12 @@ void PcdAntennaOn(void)
 	{
 		SetBitMask(TxControlReg, 0x03);
 	}
+
+	dbg("RC522 antenna on");
 }
 
 void PcdAntennaOff(void)
 {
 	ClearBitMask(TxControlReg, 0x03);
+	dbg("RC522 antenna off");
 }

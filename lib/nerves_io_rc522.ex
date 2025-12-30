@@ -48,7 +48,7 @@ defmodule Nerves.IO.RC522 do
 
   # Logs from c code
   def handle_info({:log, level, message}, state) do
-    Logger.log(String.to_atom(level), message)
+    Logger.log(String.to_atom(level), "RFID: " + message)
     {:noreply, state}
   end
 

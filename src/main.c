@@ -85,6 +85,7 @@ int main(int argc, char *argv[])
 
     InitRc522();
 
+    dbg("RC522 loop start");
     for (;;)
     {
         status = find_tag(&CType);
