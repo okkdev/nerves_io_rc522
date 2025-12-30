@@ -18,7 +18,9 @@
 
 #include <ei.h>
 
-#define err(code, msg) (fprintf(stderr, msg "\n"), exit(code));
+void send_log(const char *level, const char *msg);
+
+#define err(code, msg) (fprintf(stderr, msg "\n"), send_log("error", msg "\n"), exit(code));
 #define dbg(msg) (send_log("debug", msg "\n"));
 
 void erlcmd_send(char *response, size_t len);
