@@ -6,9 +6,6 @@ defmodule RC522Elixir do
   import Bitwise
   require Logger
 
-  alias Circuits.SPI
-  alias Circuits.GPIO
-
   @spi_bus "spidev0.0"
   # GPIO25 (physical pin 22)
   @rst_gpio 25
@@ -64,10 +61,15 @@ defmodule RC522Elixir do
 
   # Open SPI and RST GPIO
   def start_link() do
-    {:ok, spi} = SPI.open(@spi_bus)
-    {:ok, rst} = GPIO.open(@rst_gpio, :output)
+    Logger.info("Opening SPI bus: #{@spi_bus}")
+    {:ok, spi} = Circuits.SPI.open(@spi_bus)
+
+    Logger.info("Opening GPIO #{@rst_gpio} for reset pin")
+    {:ok, rst} = Circuits.GPIO.open(@rst_gpio, :output)
     # Set RST high
-    GPIO.write(rst, 1)
+    Circuits.GPIO.write(rst, 1)
+
+    Logger.info("RC522 hardware initialized")
     {:ok, %{spi: spi, rst: rst}}
   end
 
@@ -76,7 +78,7 @@ defmodule RC522Elixir do
     # Address: 7 bits, value: 8 bits
     # Write: MSB=0, so ((address <<< 1) &&& 0x7E)
     data = <<address <<< 1 &&& 0x7E, value>>
-    SPI.transfer(spi, data)
+    Circuits.SPI.transfer(spi, data)
     :ok
   end
 
@@ -84,7 +86,7 @@ defmodule RC522Elixir do
   def read_reg(%{spi: spi}, address) do
     # Read: MSB=1, so ((address <<< 1) &&& 0x7E) | 0x80
     data = <<(address <<< 1 &&& 0x7E) ||| 0x80, 0x00>>
-    {:ok, <<_addr, value>>} = SPI.transfer(spi, data)
+    {:ok, <<_addr, value>>} = Circuits.SPI.transfer(spi, data)
     value
   end
 
@@ -99,6 +101,7 @@ defmodule RC522Elixir do
   # Example: Antenna on
   def antenna_on(ctx) do
     # TxControlReg
+    Logger.debug("Turning RC522 antenna ON")
     val = read_reg(ctx, 0x14)
 
     if (val &&& 0x03) == 0 do
@@ -140,9 +143,11 @@ defmodule RC522Elixir do
         {:ok, tag_type}
 
       status == @tag_collision ->
+        Logger.warning("Tag collision detected during request")
         {:collision, uc_com_mf522_buf}
 
       status != @tag_notag ->
+        Logger.warning("Tag request error: status #{status}")
         {:error, :tag_err}
 
       true ->
@@ -230,6 +235,7 @@ defmodule RC522Elixir do
     if status == @tag_ok and un_len == 0x18 do
       {:ok, out_buf}
     else
+      Logger.warning("Tag select failed: status=#{status}, len=#{un_len}")
       {:error, status}
     end
   end
@@ -259,11 +265,13 @@ defmodule RC522Elixir do
     if status == @tag_ok and un_len == 0x90 do
       if Enum.at(crc_buff, 0) != Enum.at(out_buf, 16) or
            Enum.at(crc_buff, 1) != Enum.at(out_buf, 17) do
+        Logger.warning("CRC mismatch during read at address #{addr}")
         {:error, :tag_err_crc}
       else
         {:ok, Enum.take(out_buf, 16)}
       end
     else
+      Logger.warning("Read failed at address #{addr}: status=#{status}")
       {:error, status}
     end
   end
@@ -331,6 +339,7 @@ defmodule RC522Elixir do
   end
 
   def pcd_reset(ctx) do
+    Logger.debug("Resetting RC522 chip")
     write_reg(ctx, @command_reg, @pcd_resetphase)
     Process.sleep(10)
     clear_bit_mask(ctx, @tx_control_reg, 0x03)
@@ -346,6 +355,7 @@ defmodule RC522Elixir do
     write_reg(ctx, @rf_cfg_reg, 0x68)
     write_reg(ctx, @gs_n_reg, 0xFF)
     write_reg(ctx, @cwgs_cfg_reg, 0x2F)
+    Logger.debug("RC522 chip reset complete")
     :ok
   end
 

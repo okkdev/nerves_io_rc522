@@ -7,16 +7,20 @@ defmodule Nerves.IO.RC522 do
   end
 
   def init(state) do
+    Logger.info("RC522 worker starting - initializing SPI and GPIO")
     {:ok, ctx} = RC522Elixir.start_link()
     RC522Elixir.pcd_reset(ctx)
     RC522Elixir.antenna_on(ctx)
+    Logger.info("RC522 worker initialized successfully")
     schedule_poll()
     {:ok, %{ctx: ctx}}
   end
 
   def handle_info(:poll, %{ctx: ctx} = state) do
     case RC522Elixir.find_tag(ctx) do
-      {:ok, _card_type} ->
+      {:ok, card_type} ->
+        Logger.debug("Tag detected, card type: #{inspect(card_type)}")
+
         case RC522Elixir.select_tag_sn(ctx) do
           {:ok, sn, sn_len} ->
             uid_str =
@@ -28,9 +32,12 @@ defmodule Nerves.IO.RC522 do
             # You can send this to another process or handle as needed
             RC522Elixir.pcd_halt(ctx)
 
-          _ ->
-            :noop
+          {:error, reason} ->
+            Logger.warning("Failed to select tag serial number: #{inspect(reason)}")
         end
+
+      {:error, reason} ->
+        Logger.debug("Tag detection error: #{inspect(reason)}")
 
       _ ->
         :noop
