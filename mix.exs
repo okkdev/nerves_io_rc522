@@ -39,6 +39,9 @@ defmodule NervesIoRc522.Mixfile do
   end
 
   defp deps do
-    []
+    [
+      {:circuits_spi, "~> 1.4"},
+      {:circuits_gpio, "~> 1.0"}
+    ]
   end
 end

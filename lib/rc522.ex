@@ -4,6 +4,7 @@ defmodule RC522Elixir do
   """
 
   import Bitwise
+  require Logger
 
   alias Circuits.SPI
   alias Circuits.GPIO
@@ -56,7 +57,7 @@ defmodule RC522Elixir do
   @tag_err 1
   @tag_notag 2
   @tag_collision 3
-  @tag_errcrc 4
+  # @tag_errcrc 4
 
   @max_rlen 18
   # end constants
@@ -109,7 +110,7 @@ defmodule RC522Elixir do
   def antenna_off(ctx) do
     # TxControlReg
     val = read_reg(ctx, 0x14)
-    write_reg(ctx, 0x14, val &&& ~~~0x03)
+    write_reg(ctx, 0x14, val &&& Bitwise.bnot(0x03))
   end
 
   def set_bit_mask(ctx, reg, mask) do
@@ -119,7 +120,7 @@ defmodule RC522Elixir do
 
   def clear_bit_mask(ctx, reg, mask) do
     tmp = read_reg(ctx, reg)
-    write_reg(ctx, reg, tmp &&& ~~~mask)
+    write_reg(ctx, reg, tmp &&& Bitwise.bnot(mask))
   end
 
   def pcd_request(ctx, req_code) do
