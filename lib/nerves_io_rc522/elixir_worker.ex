@@ -1,4 +1,4 @@
-defmodule Nerves.IO.RC522.Worker do
+defmodule Nerves.IO.RC522 do
   use GenServer
 
   def start_link(_opts) do

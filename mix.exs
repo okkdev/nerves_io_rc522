@@ -19,8 +19,7 @@ defmodule NervesIoRc522.Mixfile do
 
   def application do
     [
-      mod: {Nerves.IO.RC522.Application, []},
-      extra_applications: [:logger]
+      applications: [:logger]
     ]
   end
 
