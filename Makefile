@@ -32,33 +32,21 @@ endif
 ERL_CFLAGS ?= -I$(ERL_EI_INCLUDE_DIR)
 ERL_LDFLAGS ?= -L$(ERL_EI_LIBDIR) -lei
 
-LDFLAGS +=
+LDFLAGS += -llgpio
 CFLAGS ?= -O2 -Wall -Wextra -Wno-unused-parameter
 CC ?= $(CROSSCOMPILER)gcc
 
-# Add liblgpio installation
-LIBLGPIO_REPO = https://github.com/joan2937/lg.git
-LIBLGPIO_DIR = liblgpio
-LIBS += -llgpio
-CFLAGS += -I$(LIBLGPIO_DIR)
-
 .PHONY: all clean
 
-# Clone and build liblgpio
-$(LIBLGPIO_DIR):
-	git clone $(LIBLGPIO_REPO) $(LIBLGPIO_DIR)
-	cd $(LIBLGPIO_DIR) && make CC=$(CC) CFLAGS="$(CFLAGS)" LDFLAGS="$(LDFLAGS)"
-
 # Ensure liblgpio is built before building the main target
-all: $(LIBLGPIO_DIR) priv/rc522
+all: priv/rc522
+
+%.o: %.c
+	$(CC) -c $(ERL_CFLAGS) $(CFLAGS) -o $@ $<
 
 priv/rc522: src/main.o src/rc522.o src/rfid.o
 	@mkdir -p priv
 	$(CC) $^ $(ERL_LDFLAGS) $(LDFLAGS) -o $@
-
-# Add liblgpio installation step
-install: all
-	cd $(LIBLGPIO_DIR) && sudo make install
 
 clean:
 	rm -f priv/rc522 src/*.o
