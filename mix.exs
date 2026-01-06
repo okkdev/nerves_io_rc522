@@ -5,7 +5,7 @@ defmodule NervesIoRc522.Mixfile do
     [
       app: :nerves_io_rc522,
       version: "0.2.0",
-      elixir: "~> 1.14",
+      elixir: "~> 1.17",
       name: "nerves_io_rc522",
       description: description(),
       package: package(),
