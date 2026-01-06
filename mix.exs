@@ -11,7 +11,6 @@ defmodule NervesIoRc522.Mixfile do
       package: package(),
       source_url: "https://github.com/arjan/nerves_io_rc522",
       compilers: Mix.compilers(),
-      make_clean: ["clean"],
       build_embedded: Mix.env() == :prod,
       start_permanent: Mix.env() == :prod,
       deps: deps()
