@@ -15,14 +15,22 @@ defmodule Nerves.IO.RC522 do
     GenServer.call(__MODULE__, :run_diagnostics)
   end
 
-  def init(_state) do
+  def init(opts) do
     Logger.info("RC522 worker starting - initializing SPI and GPIO")
+
+    # Extract callback if provided
+    callback =
+      case opts do
+        {module, function} -> {module, function}
+        _ -> nil
+      end
+
     {:ok, ctx} = RC522Elixir.start_link()
     RC522Elixir.pcd_reset(ctx)
     RC522Elixir.antenna_on(ctx)
     Logger.info("RC522 worker initialized successfully")
     schedule_poll()
-    {:ok, %{ctx: ctx}}
+    {:ok, %{ctx: ctx, callback: callback}}
   end
 
   def handle_call(:get_context, _from, %{ctx: ctx} = state) do
@@ -47,7 +55,13 @@ defmodule Nerves.IO.RC522 do
               end)
 
             Logger.info("Tag UID: #{uid_str}")
-            # You can send this to another process or handle as needed
+
+            # Call the callback if provided
+            if callback do
+              {module, function} = callback
+              apply(module, function, [uid_str])
+            end
+
             RC522Elixir.pcd_halt(ctx)
 
           {:error, reason} ->
