@@ -62,31 +62,31 @@ defmodule RC522Elixir do
   # Open SPI and RST GPIO
   def start_link() do
     Logger.info("Opening SPI bus: #{@spi_bus}")
-    {:ok, spi} = Circuits.SPI.open(@spi_bus)
+    {:ok, spi_ref} = Circuits.SPI.open(@spi_bus)
 
     Logger.info("Opening GPIO #{@rst_gpio} for reset pin")
-    {:ok, rst} = Circuits.GPIO.open(@rst_gpio, :output)
+    {:ok, rst_ref} = Circuits.GPIO.open(@rst_gpio, :output)
     # Set RST high
-    Circuits.GPIO.write(rst, 1)
+    Circuits.GPIO.write(rst_ref, 1)
 
     Logger.info("RC522 hardware initialized")
-    {:ok, %{spi: spi, rst: rst}}
+    {:ok, %{spi: spi_ref, rst: rst_ref}}
   end
 
   # Write to RC522 register
-  def write_reg(%{spi: spi}, address, value) do
+  def write_reg(%{spi: spi_ref}, address, value) do
     # Address: 7 bits, value: 8 bits
     # Write: MSB=0, so ((address <<< 1) &&& 0x7E)
     data = <<address <<< 1 &&& 0x7E, value>>
-    Circuits.SPI.transfer(spi, data)
+    {:ok, _response} = Circuits.SPI.transfer(spi_ref, data)
     :ok
   end
 
   # Read from RC522 register
-  def read_reg(%{spi: spi}, address) do
+  def read_reg(%{spi: spi_ref}, address) do
     # Read: MSB=1, so ((address <<< 1) &&& 0x7E) | 0x80
     data = <<(address <<< 1 &&& 0x7E) ||| 0x80, 0x00>>
-    {:ok, <<_addr, value>>} = Circuits.SPI.transfer(spi, data)
+    {:ok, <<_addr, value>>} = Circuits.SPI.transfer(spi_ref, data)
     value
   end
 
