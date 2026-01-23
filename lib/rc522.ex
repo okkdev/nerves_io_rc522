@@ -515,70 +515,48 @@ defmodule RC522Elixir do
     # Get UID from anticollision level 1
     case pcd_anticoll(ctx, @picc_anticoll1) do
       {:ok, uid1} ->
-        # Small delay to let chip settle but not timeout the card
-        Process.sleep(2)
-
         # Check if this is a cascaded UID (7 or 10 bytes)
         if Enum.at(uid1, 0) == 0x88 do
-          # 7-byte or 10-byte UID - need cascade level 2
-          # SELECT with the 4 bytes from anticoll (including 0x88)
-          case pcd_select(ctx, @picc_anticoll1, uid1) do
-            {:ok, sak1} ->
-              Logger.debug("Cascade level 1 selected, SAK: #{inspect(sak1)}")
+          # 7-byte UID - skip SELECT, just do second anticoll
+          Logger.debug("Cascaded UID detected, getting second part")
 
-              # Small delay before next anticoll
-              Process.sleep(2)
+          # Now get second part from cascade level 2
+          case pcd_anticoll(ctx, @picc_anticoll2) do
+            {:ok, uid2} ->
+              if Enum.at(uid2, 0) == 0x88 do
+                # 10-byte UID - need cascade level 3
+                Logger.warning("10-byte UID detected - not fully supported yet")
+                {:error, :unsupported_uid}
+              else
+                # 7-byte UID - combine parts
+                # uid1 = [0x88, byte0, byte1, byte2]
+                # uid2 = [byte3, byte4, byte5, byte6]
+                uid_part1 = Enum.slice(uid1, 1, 3)
+                uid_part2 = Enum.slice(uid2, 0, 4)
+                full_uid = uid_part1 ++ uid_part2
 
-              # Now get second part from cascade level 2
-              case pcd_anticoll(ctx, @picc_anticoll2) do
-                {:ok, uid2} ->
-                  # Small delay before select
-                  Process.sleep(2)
+                uid_str =
+                  full_uid
+                  |> Enum.map(&(Integer.to_string(&1, 16) |> String.pad_leading(2, "0")))
+                  |> Enum.join("")
 
-                  if Enum.at(uid2, 0) == 0x88 do
-                    # 10-byte UID - need cascade level 3
-                    Logger.warning("10-byte UID detected - not fully supported yet")
-                    {:error, :unsupported_uid}
-                  else
-                    # 7-byte UID - combine parts
-                    uid_part1 = Enum.slice(uid1, 1, 3)
-                    uid_part2 = Enum.slice(uid2, 0, 4)
-                    full_uid = uid_part1 ++ uid_part2
-
-                    uid_str =
-                      full_uid
-                      |> Enum.map(&(Integer.to_string(&1, 16) |> String.pad_leading(2, "0")))
-                      |> Enum.join("")
-
-                    Logger.info("Tag UID (7-byte): #{uid_str}")
-                    {:ok, full_uid, 7}
-                  end
-
-                error ->
-                  Logger.warning("Cascade level 2 anticoll failed: #{inspect(error)}")
-                  error
+                Logger.info("Tag UID (7-byte): #{uid_str}")
+                {:ok, full_uid, 7}
               end
 
-            select_error ->
-              Logger.warning("Cascade level 1 select failed: #{inspect(select_error)}")
-              select_error
+            error ->
+              Logger.warning("Cascade level 2 anticoll failed: #{inspect(error)}")
+              error
           end
         else
           # Standard 4-byte UID
-          case pcd_select(ctx, @picc_anticoll1, uid1) do
-            {:ok, _sak} ->
-              uid_str =
-                uid1
-                |> Enum.map(&(Integer.to_string(&1, 16) |> String.pad_leading(2, "0")))
-                |> Enum.join("")
+          uid_str =
+            uid1
+            |> Enum.map(&(Integer.to_string(&1, 16) |> String.pad_leading(2, "0")))
+            |> Enum.join("")
 
-              Logger.info("Tag UID (4-byte): #{uid_str}")
-              {:ok, uid1, 4}
-
-            select_error ->
-              Logger.warning("4-byte UID select failed: #{inspect(select_error)}")
-              select_error
-          end
+          Logger.info("Tag UID (4-byte): #{uid_str}")
+          {:ok, uid1, 4}
         end
 
       error ->
