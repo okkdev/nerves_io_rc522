@@ -42,7 +42,7 @@ defmodule Nerves.IO.RC522 do
     {:reply, result, state}
   end
 
-  def handle_info(:poll, %{ctx: ctx} = state) do
+  def handle_info(:poll, %{ctx: ctx, callback: callback} = state) do
     case RC522Elixir.find_tag(ctx) do
       {:ok, card_type} ->
         Logger.debug("Tag detected, card type: #{inspect(card_type)}")
