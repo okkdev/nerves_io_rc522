@@ -632,4 +632,59 @@ defmodule RC522Elixir do
     Logger.info("\n=== Diagnostics Complete ===")
     :ok
   end
+
+  def test_transceive(ctx) do
+    Logger.info("=== Testing RC522 Transceive ===")
+
+    # Ensure antenna is on
+    antenna_on(ctx)
+
+    # Check current state before command
+    Logger.info("Before command:")
+    Logger.info("  CommandReg: 0x#{Integer.to_string(read_reg(ctx, @command_reg), 16)}")
+    Logger.info("  ComIrqReg: 0x#{Integer.to_string(read_reg(ctx, @com_irq_reg), 16)}")
+    Logger.info("  ErrorReg: 0x#{Integer.to_string(read_reg(ctx, @error_reg), 16)}")
+    Logger.info("  FIFOLevelReg: 0x#{Integer.to_string(read_reg(ctx, @fifo_level_reg), 16)}")
+
+    # Set BitFramingReg to 0x07 (for REQA command)
+    write_reg(ctx, @bit_framing_reg, 0x07)
+
+    # Prepare for transceive
+    write_reg(ctx, @com_ien_reg, 0x77 ||| 0x80)
+    clear_bit_mask(ctx, @com_irq_reg, 0x80)
+    set_bit_mask(ctx, @fifo_level_reg, 0x80)
+    write_reg(ctx, @command_reg, @pcd_idle)
+
+    # Write REQIDL command to FIFO
+    write_reg(ctx, @fifo_data_reg, @picc_reqidl)
+
+    # Start transceive
+    write_reg(ctx, @command_reg, @pcd_transceive)
+    set_bit_mask(ctx, @bit_framing_reg, 0x80)
+
+    Logger.info("After starting command:")
+    Logger.info("  CommandReg: 0x#{Integer.to_string(read_reg(ctx, @command_reg), 16)}")
+    Logger.info("  ComIrqReg: 0x#{Integer.to_string(read_reg(ctx, @com_irq_reg), 16)}")
+
+    # Wait and check multiple times
+    Enum.each(1..10, fn i ->
+      Process.sleep(10)
+      irq = read_reg(ctx, @com_irq_reg)
+      err = read_reg(ctx, @error_reg)
+
+      Logger.info(
+        "  [#{i * 10}ms] ComIrqReg: 0x#{Integer.to_string(irq, 16)}, ErrorReg: 0x#{Integer.to_string(err, 16)}"
+      )
+    end)
+
+    clear_bit_mask(ctx, @bit_framing_reg, 0x80)
+
+    Logger.info("Final state:")
+    Logger.info("  CommandReg: 0x#{Integer.to_string(read_reg(ctx, @command_reg), 16)}")
+    Logger.info("  ComIrqReg: 0x#{Integer.to_string(read_reg(ctx, @com_irq_reg), 16)}")
+    Logger.info("  ErrorReg: 0x#{Integer.to_string(read_reg(ctx, @error_reg), 16)}")
+    Logger.info("  FIFOLevelReg: 0x#{Integer.to_string(read_reg(ctx, @fifo_level_reg), 16)}")
+
+    :ok
+  end
 end
