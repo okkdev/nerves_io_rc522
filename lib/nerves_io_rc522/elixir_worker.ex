@@ -15,7 +15,7 @@ defmodule Nerves.IO.RC522 do
     GenServer.call(__MODULE__, :run_diagnostics)
   end
 
-  def init(state) do
+  def init(_state) do
     Logger.info("RC522 worker starting - initializing SPI and GPIO")
     {:ok, ctx} = RC522Elixir.start_link()
     RC522Elixir.pcd_reset(ctx)
@@ -40,7 +40,7 @@ defmodule Nerves.IO.RC522 do
         Logger.debug("Tag detected, card type: #{inspect(card_type)}")
 
         case RC522Elixir.select_tag_sn(ctx) do
-          {:ok, sn, sn_len} ->
+          {:ok, sn, _sn_len} ->
             uid_str =
               Enum.map_join(sn, "", fn b ->
                 :io_lib.format("~2.16.0B", [b]) |> List.to_string()
