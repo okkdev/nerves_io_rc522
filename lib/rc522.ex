@@ -651,7 +651,7 @@ defmodule RC522Elixir do
 
     # Prepare for transceive
     write_reg(ctx, @com_ien_reg, 0x77 ||| 0x80)
-    clear_bit_mask(ctx, @com_irq_reg, 0x80)
+    write_reg(ctx, @com_irq_reg, 0x7F)
     set_bit_mask(ctx, @fifo_level_reg, 0x80)
     write_reg(ctx, @command_reg, @pcd_idle)
 
