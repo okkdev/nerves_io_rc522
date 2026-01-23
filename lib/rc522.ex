@@ -158,12 +158,12 @@ defmodule RC522Elixir do
         Logger.warning("Tag collision detected during request")
         {:collision, uc_com_mf522_buf}
 
-      status != @tag_notag ->
-        Logger.warning("Tag request error: status #{status}")
-        {:error, :tag_err}
+      status == @tag_notag ->
+        {:error, :notag}
 
       true ->
-        {:error, :unknown}
+        Logger.warning("Tag request error: status #{status}")
+        {:error, :tag_err}
     end
   end
 
@@ -430,7 +430,8 @@ defmodule RC522Elixir do
     {status, p_out, p_out_len_bit} =
       if i != 0 do
         pcd_err = read_reg(ctx, error_reg)
-        Logger.debug("ErrorReg: #{Integer.to_string(pcd_err, 16)}")
+        Logger.debug("ErrorReg: 0x#{Integer.to_string(pcd_err, 16)}")
+        Logger.debug("ComIrqReg: 0x#{Integer.to_string(n, 16)}")
 
         cond do
           (pcd_err &&& 0x08) != 0 ->
@@ -438,11 +439,11 @@ defmodule RC522Elixir do
 
           (pcd_err &&& 0x11) == 0 ->
             status =
-              if (n &&& irq_en &&& 0x01) != 0 do
-                @tag_notag
-              else
+              if (n &&& wait_for) != 0 do
                 Logger.debug("Tag detected successfully")
                 @tag_ok
+              else
+                @tag_notag
               end
 
             if command == @pcd_transceive do
