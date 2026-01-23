@@ -239,6 +239,8 @@ defmodule RC522Elixir do
     buf = List.replace_at(buf, 4, Enum.at(p_snr, 2))
     buf = List.replace_at(buf, 5, Enum.at(p_snr, 3))
 
+    Logger.debug("SELECT: cascade=0x#{Integer.to_string(cascade, 16)}, UID=#{inspect(p_snr)}")
+
     # Calculate CRC
     buf = calulate_crc(ctx, buf, 7)
 
@@ -247,7 +249,9 @@ defmodule RC522Elixir do
 
     {status, out_buf, un_len} = pcd_com_mf522(ctx, @pcd_transceive, buf)
 
-    if status == @tag_ok and un_len == 0x18 do
+    Logger.debug("SELECT response: status=#{status}, len=#{un_len}, buf=#{inspect(out_buf)}")
+
+    if status == @tag_ok and un_len >= 8 do
       {:ok, out_buf}
     else
       Logger.warning("Tag select failed: status=#{status}, len=#{un_len}")
@@ -511,15 +515,26 @@ defmodule RC522Elixir do
     # Get UID from anticollision level 1
     case pcd_anticoll(ctx, @picc_anticoll1) do
       {:ok, uid1} ->
+        # Small delay to let chip settle but not timeout the card
+        Process.sleep(2)
+
         # Check if this is a cascaded UID (7 or 10 bytes)
         if Enum.at(uid1, 0) == 0x88 do
           # 7-byte or 10-byte UID - need cascade level 2
-          # First, SELECT cascade level 1 to prepare for next level
+          # SELECT with the 4 bytes from anticoll (including 0x88)
           case pcd_select(ctx, @picc_anticoll1, uid1) do
-            {:ok, _sak1} ->
+            {:ok, sak1} ->
+              Logger.debug("Cascade level 1 selected, SAK: #{inspect(sak1)}")
+
+              # Small delay before next anticoll
+              Process.sleep(2)
+
               # Now get second part from cascade level 2
               case pcd_anticoll(ctx, @picc_anticoll2) do
                 {:ok, uid2} ->
+                  # Small delay before select
+                  Process.sleep(2)
+
                   if Enum.at(uid2, 0) == 0x88 do
                     # 10-byte UID - need cascade level 3
                     Logger.warning("10-byte UID detected - not fully supported yet")
@@ -550,13 +565,20 @@ defmodule RC522Elixir do
           end
         else
           # Standard 4-byte UID
-          uid_str =
-            uid1
-            |> Enum.map(&(Integer.to_string(&1, 16) |> String.pad_leading(2, "0")))
-            |> Enum.join("")
+          case pcd_select(ctx, @picc_anticoll1, uid1) do
+            {:ok, _sak} ->
+              uid_str =
+                uid1
+                |> Enum.map(&(Integer.to_string(&1, 16) |> String.pad_leading(2, "0")))
+                |> Enum.join("")
 
-          Logger.info("Tag UID (4-byte): #{uid_str}")
-          {:ok, uid1, 4}
+              Logger.info("Tag UID (4-byte): #{uid_str}")
+              {:ok, uid1, 4}
+
+            select_error ->
+              Logger.warning("4-byte UID select failed: #{inspect(select_error)}")
+              select_error
+          end
         end
 
       error ->
