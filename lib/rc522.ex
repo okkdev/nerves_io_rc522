@@ -150,7 +150,7 @@ defmodule RC522Elixir do
       pcd_com_mf522(ctx, @pcd_transceive, uc_com_mf522_buf)
 
     cond do
-      status == @tag_ok and un_len == 0x10 ->
+      status == @tag_ok and length(uc_com_mf522_buf) >= 2 ->
         tag_type = Enum.take(uc_com_mf522_buf, 2)
         {:ok, tag_type}
 
@@ -162,7 +162,10 @@ defmodule RC522Elixir do
         {:error, :notag}
 
       true ->
-        Logger.warning("Tag request error: status #{status}")
+        Logger.warning(
+          "Tag request error: status #{status}, len #{un_len}, buf_len #{length(uc_com_mf522_buf)}"
+        )
+
         {:error, :tag_err}
     end
   end
