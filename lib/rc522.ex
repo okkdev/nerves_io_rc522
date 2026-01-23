@@ -507,21 +507,46 @@ defmodule RC522Elixir do
   def select_tag_sn(ctx) do
     # Get UID from anticollision
     case pcd_anticoll(ctx, @picc_anticoll1) do
-      {:ok, uid} ->
+      {:ok, uid1} ->
         # Check if this is a cascaded UID (7 or 10 bytes)
-        if Enum.at(uid, 0) == 0x88 do
-          # Cascaded UID - would need to continue with anticoll2/3
-          Logger.warning("Cascaded UID detected - not fully supported yet")
-          {:error, :unsupported_uid}
+        if Enum.at(uid1, 0) == 0x88 do
+          # 7-byte or 10-byte UID - need cascade level 2
+          # First 3 bytes (skip the 0x88 cascade tag)
+          uid_part1 = Enum.slice(uid1, 1, 3)
+
+          # Get second part from cascade level 2
+          case pcd_anticoll(ctx, @picc_anticoll2) do
+            {:ok, uid2} ->
+              if Enum.at(uid2, 0) == 0x88 do
+                # 10-byte UID - need cascade level 3
+                Logger.warning("10-byte UID detected - not fully supported yet")
+                {:error, :unsupported_uid}
+              else
+                # 7-byte UID - combine parts
+                uid_part2 = Enum.slice(uid2, 0, 4)
+                full_uid = uid_part1 ++ uid_part2
+
+                uid_str =
+                  full_uid
+                  |> Enum.map(&(Integer.to_string(&1, 16) |> String.pad_leading(2, "0")))
+                  |> Enum.join("")
+
+                Logger.info("Tag UID (7-byte): #{uid_str}")
+                {:ok, full_uid, 7}
+              end
+
+            error ->
+              error
+          end
         else
-          # Standard 4-byte UID (MIFARE Classic, Ultralight, NTAG, etc.)
+          # Standard 4-byte UID
           uid_str =
-            uid
+            uid1
             |> Enum.map(&(Integer.to_string(&1, 16) |> String.pad_leading(2, "0")))
             |> Enum.join("")
 
-          Logger.info("Tag UID: #{uid_str}")
-          {:ok, uid, 4}
+          Logger.info("Tag UID (4-byte): #{uid_str}")
+          {:ok, uid1, 4}
         end
 
       error ->
