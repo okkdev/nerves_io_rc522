@@ -530,4 +530,95 @@ defmodule RC522Elixir do
         {:error, "Unknown error"}
     end
   end
+
+  # ========== DIAGNOSTIC FUNCTIONS ==========
+
+  @doc """
+  Test SPI communication by reading the VersionReg register.
+  Should return 0x91 or 0x92 for a genuine RC522.
+  """
+  def test_spi(ctx) do
+    # VersionReg at address 0x37
+    version = read_reg(ctx, 0x37)
+    Logger.info("RC522 VersionReg: 0x#{Integer.to_string(version, 16)}")
+
+    case version do
+      0x91 -> {:ok, "RC522 v1.0 detected"}
+      0x92 -> {:ok, "RC522 v2.0 detected"}
+      0x00 -> {:error, "No response from RC522 (got 0x00) - check SPI connections"}
+      0xFF -> {:error, "Invalid response from RC522 (got 0xFF) - check SPI connections"}
+      other -> {:warning, "Unknown version: 0x#{Integer.to_string(other, 16)}"}
+    end
+  end
+
+  @doc """
+  Test GPIO by toggling the reset pin.
+  """
+  def test_gpio(%{rst: rst_ref}) do
+    Logger.info("Testing GPIO reset pin...")
+
+    # Toggle reset pin
+    Circuits.GPIO.write(rst_ref, 0)
+    Logger.info("Reset pin set to LOW")
+    Process.sleep(100)
+
+    Circuits.GPIO.write(rst_ref, 1)
+    Logger.info("Reset pin set to HIGH")
+    Process.sleep(100)
+
+    {:ok, "GPIO test complete"}
+  end
+
+  @doc """
+  Read multiple registers to verify SPI communication.
+  """
+  def read_all_registers(ctx) do
+    registers = [
+      {0x01, "CommandReg"},
+      {0x02, "ComIEnReg"},
+      {0x04, "ComIrqReg"},
+      {0x06, "ErrorReg"},
+      {0x09, "FIFODataReg"},
+      {0x0A, "FIFOLevelReg"},
+      {0x0C, "ControlReg"},
+      {0x0D, "BitFramingReg"},
+      {0x14, "TxControlReg"},
+      {0x37, "VersionReg"}
+    ]
+
+    Logger.info("Reading RC522 registers:")
+
+    Enum.map(registers, fn {addr, name} ->
+      value = read_reg(ctx, addr)
+
+      Logger.info(
+        "  #{name} (0x#{Integer.to_string(addr, 16)}): 0x#{Integer.to_string(value, 16)}"
+      )
+
+      {name, value}
+    end)
+  end
+
+  @doc """
+  Full diagnostic test - runs all tests.
+  """
+  def run_diagnostics(ctx) do
+    Logger.info("=== Starting RC522 Diagnostics ===")
+
+    # Test GPIO
+    Logger.info("\n--- GPIO Test ---")
+    test_gpio(ctx)
+
+    # Test SPI
+    Logger.info("\n--- SPI Test ---")
+    spi_result = test_spi(ctx)
+    IO.inspect(spi_result, label: "SPI Test Result")
+
+    # Read all registers
+    Logger.info("\n--- Register Dump ---")
+    read_all_registers(ctx)
+
+    Logger.info("\n=== Diagnostics Complete ===")
+    :ok
+  end
 end
