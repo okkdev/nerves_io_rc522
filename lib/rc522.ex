@@ -415,7 +415,7 @@ defmodule RC522Elixir do
 
     # Wait for completion
     # Arbitrary timeout value
-    i = 500
+    i = 25
     n = 0
 
     {i, n} =
