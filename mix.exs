@@ -19,7 +19,7 @@ defmodule NervesIoRc522.Mixfile do
 
   def application do
     [
-      applications: [:logger]
+      extra_applications: [:logger]
     ]
   end
 
