@@ -100,12 +100,24 @@ defmodule RC522Elixir do
 
   # Example: Antenna on
   def antenna_on(ctx) do
-    # TxControlReg
     Logger.debug("Turning RC522 antenna ON")
-    val = read_reg(ctx, 0x14)
+    val = read_reg(ctx, @tx_control_reg)
+    Logger.debug("TxControlReg before: 0x#{Integer.to_string(val, 16)}")
 
-    if (val &&& 0x03) == 0 do
-      write_reg(ctx, 0x14, val ||| 0x03)
+    # Always set bits 0 and 1
+    write_reg(ctx, @tx_control_reg, val ||| 0x03)
+
+    # Verify it was set
+    Process.sleep(10)
+    val_after = read_reg(ctx, @tx_control_reg)
+    Logger.debug("TxControlReg after: 0x#{Integer.to_string(val_after, 16)}")
+
+    if (val_after &&& 0x03) == 0x03 do
+      Logger.info("Antenna successfully enabled")
+    else
+      Logger.error(
+        "Failed to enable antenna! TxControlReg: 0x#{Integer.to_string(val_after, 16)}"
+      )
     end
   end
 
@@ -341,10 +353,9 @@ defmodule RC522Elixir do
   def pcd_reset(ctx) do
     Logger.debug("Resetting RC522 chip")
     write_reg(ctx, @command_reg, @pcd_resetphase)
-    Process.sleep(10)
-    clear_bit_mask(ctx, @tx_control_reg, 0x03)
-    Process.sleep(10)
-    set_bit_mask(ctx, @tx_control_reg, 0x03)
+    Process.sleep(50)
+
+    # Don't manipulate antenna here - let antenna_on handle it
     write_reg(ctx, @t_mode_reg, 0x8D)
     write_reg(ctx, @t_prescaler_reg, 0x3E)
     write_reg(ctx, @t_reload_reg_l, 30)
