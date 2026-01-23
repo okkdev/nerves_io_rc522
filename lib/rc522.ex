@@ -517,20 +517,26 @@ defmodule RC522Elixir do
       {:ok, uid1} ->
         # Check if this is a cascaded UID (7 or 10 bytes)
         if Enum.at(uid1, 0) == 0x88 do
-          # 7-byte UID - skip SELECT, just do second anticoll
-          Logger.debug("Cascaded UID detected, getting second part")
+          # 7-byte UID - need second anticoll
+          Logger.debug("Cascaded UID detected, UID part 1: #{inspect(uid1)}")
+
+          # Small delay to prevent card timeout
+          Process.sleep(5)
+
+          # Ensure BitFramingReg is reset for second anticoll
+          write_reg(ctx, @bit_framing_reg, 0x00)
 
           # Now get second part from cascade level 2
           case pcd_anticoll(ctx, @picc_anticoll2) do
             {:ok, uid2} ->
+              Logger.debug("Got UID part 2: #{inspect(uid2)}")
+
               if Enum.at(uid2, 0) == 0x88 do
-                # 10-byte UID - need cascade level 3
+                # 10-byte UID
                 Logger.warning("10-byte UID detected - not fully supported yet")
                 {:error, :unsupported_uid}
               else
                 # 7-byte UID - combine parts
-                # uid1 = [0x88, byte0, byte1, byte2]
-                # uid2 = [byte3, byte4, byte5, byte6]
                 uid_part1 = Enum.slice(uid1, 1, 3)
                 uid_part2 = Enum.slice(uid2, 0, 4)
                 full_uid = uid_part1 ++ uid_part2
@@ -546,6 +552,9 @@ defmodule RC522Elixir do
 
             error ->
               Logger.warning("Cascade level 2 anticoll failed: #{inspect(error)}")
+              # Fallback: use only the 3 bytes we got (not ideal but better than nothing)
+              partial_uid = Enum.slice(uid1, 1, 3)
+              Logger.warning("Using partial UID (3 bytes): #{inspect(partial_uid)}")
               error
           end
         else
