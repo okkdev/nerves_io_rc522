@@ -3,7 +3,16 @@ defmodule Nerves.IO.RC522 do
   require Logger
 
   def start_link(_opts) do
-    GenServer.start_link(__MODULE__, %{})
+    GenServer.start_link(__MODULE__, %{}, name: __MODULE__)
+  end
+
+  def get_context do
+    GenServer.call(__MODULE__, :get_context)
+  end
+
+  # to run diagnostics on the RC522 with Nerves.IO.RC522.run_diagnostics()
+  def run_diagnostics do
+    GenServer.call(__MODULE__, :run_diagnostics)
   end
 
   def init(state) do
@@ -14,6 +23,15 @@ defmodule Nerves.IO.RC522 do
     Logger.info("RC522 worker initialized successfully")
     schedule_poll()
     {:ok, %{ctx: ctx}}
+  end
+
+  def handle_call(:get_context, _from, %{ctx: ctx} = state) do
+    {:reply, ctx, state}
+  end
+
+  def handle_call(:run_diagnostics, _from, %{ctx: ctx} = state) do
+    result = RC522Elixir.run_diagnostics(ctx)
+    {:reply, result, state}
   end
 
   def handle_info(:poll, %{ctx: ctx} = state) do
