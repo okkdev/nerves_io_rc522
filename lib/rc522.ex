@@ -505,35 +505,27 @@ defmodule RC522Elixir do
   end
 
   def select_tag_sn(ctx) do
-    # Returns {:ok, sn, len} or {:error, reason}
-    with {:ok, buff1} <- pcd_anticoll(ctx, @picc_anticoll1),
-         {:ok, _} <- pcd_select(ctx, @picc_anticoll1, buff1) do
-      cond do
-        Enum.at(buff1, 0) == 0x88 ->
-          sn = Enum.slice(buff1, 1, 3)
+    # Get UID from anticollision
+    case pcd_anticoll(ctx, @picc_anticoll1) do
+      {:ok, uid} ->
+        # Check if this is a cascaded UID (7 or 10 bytes)
+        if Enum.at(uid, 0) == 0x88 do
+          # Cascaded UID - would need to continue with anticoll2/3
+          Logger.warning("Cascaded UID detected - not fully supported yet")
+          {:error, :unsupported_uid}
+        else
+          # Standard 4-byte UID (MIFARE Classic, Ultralight, NTAG, etc.)
+          uid_str =
+            uid
+            |> Enum.map(&(Integer.to_string(&1, 16) |> String.pad_leading(2, "0")))
+            |> Enum.join("")
 
-          with {:ok, buff2} <- pcd_anticoll(ctx, @picc_anticoll2),
-               {:ok, _} <- pcd_select(ctx, @picc_anticoll2, buff2) do
-            if Enum.at(buff2, 0) == 0x88 do
-              sn2 = Enum.slice(buff2, 1, 3)
+          Logger.info("Tag UID: #{uid_str}")
+          {:ok, uid, 4}
+        end
 
-              with {:ok, buff3} <- pcd_anticoll(ctx, @picc_anticoll3),
-                   {:ok, _} <- pcd_select(ctx, @picc_anticoll3, buff3) do
-                sn3 = Enum.slice(buff3, 0, 4)
-                {:ok, sn ++ sn2 ++ sn3, 10}
-              end
-            else
-              sn2 = Enum.slice(buff2, 0, 4)
-              {:ok, sn ++ sn2, 7}
-            end
-          end
-
-        true ->
-          sn = Enum.slice(buff1, 0, 4)
-          {:ok, sn, 4}
-      end
-    else
-      {:error, reason} -> {:error, reason}
+      error ->
+        error
     end
   end
 
