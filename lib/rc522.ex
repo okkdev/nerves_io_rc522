@@ -438,17 +438,20 @@ defmodule RC522Elixir do
             {@tag_collision, [], 0}
 
           (pcd_err &&& 0x11) == 0 ->
-            status =
-              if (n &&& wait_for) != 0 do
-                Logger.debug("Tag detected successfully")
-                @tag_ok
-              else
-                @tag_notag
-              end
-
             if command == @pcd_transceive do
               fifo_level = read_reg(ctx, fifo_level_reg)
               last_bits = read_reg(ctx, control_reg) &&& 0x07
+
+              Logger.debug("FIFOLevelReg: #{Integer.to_string(fifo_level, 16)}")
+              Logger.debug("ControlReg: #{Integer.to_string(last_bits, 16)}")
+
+              status =
+                if fifo_level > 0 do
+                  Logger.debug("Tag detected successfully")
+                  @tag_ok
+                else
+                  @tag_notag
+                end
 
               p_out_len_bit =
                 if last_bits != 0 do
@@ -457,20 +460,28 @@ defmodule RC522Elixir do
                   fifo_level * 8
                 end
 
-              Logger.debug("FIFOLevelReg: #{Integer.to_string(fifo_level, 16)}")
-              Logger.debug("ControlReg: #{Integer.to_string(last_bits, 16)}")
-
               n = if fifo_level == 0, do: 1, else: fifo_level
               n = if n > @max_rlen, do: @max_rlen, else: n
 
               p_out = for _idx <- 0..(n - 1), do: read_reg(ctx, fifo_data_reg)
               {status, p_out, p_out_len_bit}
             else
+              # For non-transceive commands, check wait_for bits
+              status =
+                if (n &&& wait_for) != 0 do
+                  @tag_ok
+                else
+                  @tag_notag
+                end
+
               {status, [], 0}
             end
 
           true ->
-            Logger.warning("Unknown error detected in ErrorReg")
+            Logger.warning(
+              "Unknown error detected in ErrorReg: 0x#{Integer.to_string(pcd_err, 16)}"
+            )
+
             {@tag_err, [], 0}
         end
       else
