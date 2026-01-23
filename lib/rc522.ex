@@ -396,7 +396,8 @@ defmodule RC522Elixir do
     end
 
     # Wait for completion
-    i = 150
+    # Arbitrary timeout value
+    i = 500
     n = 0
 
     {i, n} =
@@ -418,6 +419,7 @@ defmodule RC522Elixir do
     {status, p_out, p_out_len_bit} =
       if i != 0 do
         pcd_err = read_reg(ctx, error_reg)
+        Logger.debug("ErrorReg: #{Integer.to_string(pcd_err, 16)}")
 
         cond do
           (pcd_err &&& 0x08) != 0 ->
@@ -428,6 +430,7 @@ defmodule RC522Elixir do
               if (n &&& irq_en &&& 0x01) != 0 do
                 @tag_notag
               else
+                Logger.debug("Tag detected successfully")
                 @tag_ok
               end
 
@@ -442,6 +445,9 @@ defmodule RC522Elixir do
                   fifo_level * 8
                 end
 
+              Logger.debug("FIFOLevelReg: #{Integer.to_string(fifo_level, 16)}")
+              Logger.debug("ControlReg: #{Integer.to_string(last_bits, 16)}")
+
               n = if fifo_level == 0, do: 1, else: fifo_level
               n = if n > @max_rlen, do: @max_rlen, else: n
 
@@ -452,9 +458,11 @@ defmodule RC522Elixir do
             end
 
           true ->
+            Logger.warning("Unknown error detected in ErrorReg")
             {@tag_err, [], 0}
         end
       else
+        Logger.error("Timeout waiting for RC522 response")
         {@tag_err, [], 0}
       end
 
