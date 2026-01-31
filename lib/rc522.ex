@@ -530,47 +530,60 @@ defmodule RC522Elixir do
 
   # Add this function to read UID from NTAG memory
   def read_ntag_uid(ctx) do
-    # For NTAG cards, UID is stored in pages 0-2
-    # Reading page 0 returns 16 bytes (pages 0-3)
-    case pcd_read_ntag(ctx, 0) do
-      {:ok, data} ->
-        # data contains:
-        # Page 0: [UID0, UID1, UID2, BCC0]
-        # Page 1: [UID3, UID4, UID5, UID6]
-        # Page 2: [BCC1, internal, lock0, lock1]
-        # Page 3: [OTP0, OTP1, OTP2, OTP3]
+    # Card might be in HALT state after failed anticoll
+    # Send REQUEST to wake it up
+    Logger.debug("Waking card with REQUEST before reading memory")
 
-        page0 = Enum.slice(data, 0, 4)
-        page1 = Enum.slice(data, 4, 4)
+    case pcd_request(ctx, @picc_reqidl) do
+      {:ok, _atqa} ->
+        Logger.debug("Card responded to REQUEST, now reading memory")
 
-        # Check if it's a cascaded UID
-        if Enum.at(page0, 0) == 0x88 do
-          # 7-byte UID: take bytes 1-3 from page0, all 4 from page1
-          uid = Enum.slice(page0, 1, 3) ++ Enum.slice(page1, 0, 4)
+        # For NTAG cards, UID is stored in pages 0-2
+        # Reading page 0 returns 16 bytes (pages 0-3)
+        case pcd_read_ntag(ctx, 0) do
+          {:ok, data} ->
+            # data contains:
+            # Page 0: [UID0, UID1, UID2, BCC0]
+            # Page 1: [UID3, UID4, UID5, UID6]
+            # Page 2: [BCC1, internal, lock0, lock1]
+            # Page 3: [OTP0, OTP1, OTP2, OTP3]
 
-          uid_str =
-            uid
-            |> Enum.map(&(Integer.to_string(&1, 16) |> String.pad_leading(2, "0")))
-            |> Enum.join("")
+            page0 = Enum.slice(data, 0, 4)
+            page1 = Enum.slice(data, 4, 4)
 
-          Logger.info("NTAG UID (from memory): #{uid_str}")
-          {:ok, uid, 7}
-        else
-          # 4-byte UID: take all 4 from page0
-          uid = Enum.slice(page0, 0, 4)
+            # Check if it's a cascaded UID
+            if Enum.at(page0, 0) == 0x88 do
+              # 7-byte UID: take bytes 1-3 from page0, all 4 from page1
+              uid = Enum.slice(page0, 1, 3) ++ Enum.slice(page1, 0, 4)
 
-          uid_str =
-            uid
-            |> Enum.map(&(Integer.to_string(&1, 16) |> String.pad_leading(2, "0")))
-            |> Enum.join("")
+              uid_str =
+                uid
+                |> Enum.map(&(Integer.to_string(&1, 16) |> String.pad_leading(2, "0")))
+                |> Enum.join("")
 
-          Logger.info("Tag UID (from memory): #{uid_str}")
-          {:ok, uid, 4}
+              Logger.info("NTAG UID (from memory): #{uid_str}")
+              {:ok, uid, 7}
+            else
+              # 4-byte UID: take all 4 from page0
+              uid = Enum.slice(page0, 0, 4)
+
+              uid_str =
+                uid
+                |> Enum.map(&(Integer.to_string(&1, 16) |> String.pad_leading(2, "0")))
+                |> Enum.join("")
+
+              Logger.info("Tag UID (from memory): #{uid_str}")
+              {:ok, uid, 4}
+            end
+
+          error ->
+            Logger.error("Failed to read NTAG memory: #{inspect(error)}")
+            error
         end
 
-      error ->
-        Logger.error("Failed to read NTAG UID from memory: #{inspect(error)}")
-        error
+      request_error ->
+        Logger.error("Failed to wake card with REQUEST: #{inspect(request_error)}")
+        request_error
     end
   end
 
