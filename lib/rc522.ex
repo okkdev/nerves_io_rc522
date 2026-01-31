@@ -90,15 +90,6 @@ defmodule RC522Elixir do
     value
   end
 
-  # Example: RC522 reset sequence
-  def reset(ctx) do
-    # CommandReg, PCD_RESETPHASE
-    write_reg(ctx, 0x01, 0x0F)
-    Process.sleep(10)
-    # ... add more register writes as needed
-  end
-
-  # Example: Antenna on
   def antenna_on(ctx) do
     Logger.debug("Turning RC522 antenna ON")
     val = read_reg(ctx, @tx_control_reg)
@@ -119,13 +110,6 @@ defmodule RC522Elixir do
         "Failed to enable antenna! TxControlReg: 0x#{Integer.to_string(val_after, 16)}"
       )
     end
-  end
-
-  # Example: Antenna off
-  def antenna_off(ctx) do
-    # TxControlReg
-    val = read_reg(ctx, 0x14)
-    write_reg(ctx, 0x14, val &&& Bitwise.bnot(0x03))
   end
 
   def set_bit_mask(ctx, reg, mask) do
@@ -228,37 +212,7 @@ defmodule RC522Elixir do
     end
   end
 
-  def pcd_select(ctx, cascade, p_snr) do
-    # Prepare buffer
-    buf = List.duplicate(0, 9)
-    buf = List.replace_at(buf, 0, cascade)
-    buf = List.replace_at(buf, 1, 0x70)
-    buf = List.replace_at(buf, 6, Enum.reduce(p_snr, 0, &Bitwise.bxor/2))
-    buf = List.replace_at(buf, 2, Enum.at(p_snr, 0))
-    buf = List.replace_at(buf, 3, Enum.at(p_snr, 1))
-    buf = List.replace_at(buf, 4, Enum.at(p_snr, 2))
-    buf = List.replace_at(buf, 5, Enum.at(p_snr, 3))
-
-    Logger.debug("SELECT: cascade=0x#{Integer.to_string(cascade, 16)}, UID=#{inspect(p_snr)}")
-
-    # Calculate CRC
-    buf = calulate_crc(ctx, buf, 7)
-
-    # Clear Status2Reg bit 0x08
-    clear_bit_mask(ctx, @status2_reg, 0x08)
-
-    {status, out_buf, un_len} = pcd_com_mf522(ctx, @pcd_transceive, buf)
-
-    Logger.debug("SELECT response: status=#{status}, len=#{un_len}, buf=#{inspect(out_buf)}")
-
-    if status == @tag_ok and un_len >= 8 do
-      {:ok, out_buf}
-    else
-      Logger.warning("Tag select failed: status=#{status}, len=#{un_len}")
-      {:error, status}
-    end
-  end
-
+  # Not needed at the moment
   def pcd_auth_state(ctx, auth_mode, addr, p_key, p_snr) do
     buf =
       [auth_mode, addr] ++
@@ -437,8 +391,6 @@ defmodule RC522Elixir do
     {status, p_out, p_out_len_bit} =
       if i != 0 do
         pcd_err = read_reg(ctx, error_reg)
-        Logger.debug("ErrorReg: 0x#{Integer.to_string(pcd_err, 16)}")
-        Logger.debug("ComIrqReg: 0x#{Integer.to_string(n, 16)}")
 
         cond do
           (pcd_err &&& 0x08) != 0 ->
@@ -448,9 +400,6 @@ defmodule RC522Elixir do
             if command == @pcd_transceive do
               fifo_level = read_reg(ctx, fifo_level_reg)
               last_bits = read_reg(ctx, control_reg) &&& 0x07
-
-              Logger.debug("FIFOLevelReg: #{Integer.to_string(fifo_level, 16)}")
-              Logger.debug("ControlReg: #{Integer.to_string(last_bits, 16)}")
 
               status =
                 if fifo_level > 0 do
@@ -528,23 +477,6 @@ defmodule RC522Elixir do
 
       error ->
         error
-    end
-  end
-
-  def read_tag_str(ctx, addr) do
-    # Reads a block and returns a hex string or error
-    case pcd_read(ctx, addr) do
-      {:ok, data} ->
-        str =
-          Enum.map_join(data, "", fn b -> :io_lib.format("~2.16.0B", [b]) |> List.to_string() end)
-
-        {:ok, str}
-
-      {:error, :tag_err_crc} ->
-        {:error, "CRC Error"}
-
-      {:error, _} ->
-        {:error, "Unknown error"}
     end
   end
 
