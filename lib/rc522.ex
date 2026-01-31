@@ -511,51 +511,105 @@ defmodule RC522Elixir do
     end
   end
 
+  # Add this new function for reading NTAG pages (4 bytes each)
+  def pcd_read_ntag(ctx, page) do
+    # NTAG READ command - reads 4 pages (16 bytes) starting from page
+    buf = [@picc_read, page]
+    buf = calulate_crc(ctx, buf, 2)
+
+    {status, out_buf, un_len} = pcd_com_mf522(ctx, @pcd_transceive, buf)
+
+    if status == @tag_ok and length(out_buf) >= 16 do
+      # NTAG returns 16 bytes (4 pages of 4 bytes each)
+      {:ok, Enum.take(out_buf, 16)}
+    else
+      Logger.warning("NTAG read failed at page #{page}: status=#{status}, len=#{un_len}")
+      {:error, status}
+    end
+  end
+
+  # Add this function to read UID from NTAG memory
+  def read_ntag_uid(ctx) do
+    # For NTAG cards, UID is stored in pages 0-2
+    # Reading page 0 returns 16 bytes (pages 0-3)
+    case pcd_read_ntag(ctx, 0) do
+      {:ok, data} ->
+        # data contains:
+        # Page 0: [UID0, UID1, UID2, BCC0]
+        # Page 1: [UID3, UID4, UID5, UID6]
+        # Page 2: [BCC1, internal, lock0, lock1]
+        # Page 3: [OTP0, OTP1, OTP2, OTP3]
+
+        page0 = Enum.slice(data, 0, 4)
+        page1 = Enum.slice(data, 4, 4)
+
+        # Check if it's a cascaded UID
+        if Enum.at(page0, 0) == 0x88 do
+          # 7-byte UID: take bytes 1-3 from page0, all 4 from page1
+          uid = Enum.slice(page0, 1, 3) ++ Enum.slice(page1, 0, 4)
+
+          uid_str =
+            uid
+            |> Enum.map(&(Integer.to_string(&1, 16) |> String.pad_leading(2, "0")))
+            |> Enum.join("")
+
+          Logger.info("NTAG UID (from memory): #{uid_str}")
+          {:ok, uid, 7}
+        else
+          # 4-byte UID: take all 4 from page0
+          uid = Enum.slice(page0, 0, 4)
+
+          uid_str =
+            uid
+            |> Enum.map(&(Integer.to_string(&1, 16) |> String.pad_leading(2, "0")))
+            |> Enum.join("")
+
+          Logger.info("Tag UID (from memory): #{uid_str}")
+          {:ok, uid, 4}
+        end
+
+      error ->
+        Logger.error("Failed to read NTAG UID from memory: #{inspect(error)}")
+        error
+    end
+  end
+
+  # TODO - Test ntag memory read fallback
+  # Replace the current select_tag_sn with this version that has fallback
   def select_tag_sn(ctx) do
-    # Get UID from anticollision level 1
+    # Try ANTICOLL approach first
     case pcd_anticoll(ctx, @picc_anticoll1) do
       {:ok, uid1} ->
         # Check if this is a cascaded UID (7 or 10 bytes)
         if Enum.at(uid1, 0) == 0x88 do
-          # 7-byte UID - need second anticoll
-          Logger.debug("Cascaded UID detected, UID part 1: #{inspect(uid1)}")
+          # 7-byte UID - try second anticoll
+          Logger.debug("Cascaded UID detected, trying cascade level 2")
 
-          # Small delay to prevent card timeout
+          # Small delay
           Process.sleep(5)
 
-          # Ensure BitFramingReg is reset for second anticoll
-          write_reg(ctx, @bit_framing_reg, 0x00)
-
-          # Now get second part from cascade level 2
+          # Try second anticoll
           case pcd_anticoll(ctx, @picc_anticoll2) do
             {:ok, uid2} ->
               Logger.debug("Got UID part 2: #{inspect(uid2)}")
 
-              if Enum.at(uid2, 0) == 0x88 do
-                # 10-byte UID
-                Logger.warning("10-byte UID detected - not fully supported yet")
-                {:error, :unsupported_uid}
-              else
-                # 7-byte UID - combine parts
-                uid_part1 = Enum.slice(uid1, 1, 3)
-                uid_part2 = Enum.slice(uid2, 0, 4)
-                full_uid = uid_part1 ++ uid_part2
+              # 7-byte UID - combine parts
+              uid_part1 = Enum.slice(uid1, 1, 3)
+              uid_part2 = Enum.slice(uid2, 0, 4)
+              full_uid = uid_part1 ++ uid_part2
 
-                uid_str =
-                  full_uid
-                  |> Enum.map(&(Integer.to_string(&1, 16) |> String.pad_leading(2, "0")))
-                  |> Enum.join("")
+              uid_str =
+                full_uid
+                |> Enum.map(&(Integer.to_string(&1, 16) |> String.pad_leading(2, "0")))
+                |> Enum.join("")
 
-                Logger.info("Tag UID (7-byte): #{uid_str}")
-                {:ok, full_uid, 7}
-              end
+              Logger.info("Tag UID (7-byte via ANTICOLL): #{uid_str}")
+              {:ok, full_uid, 7}
 
-            error ->
-              Logger.warning("Cascade level 2 anticoll failed: #{inspect(error)}")
-              # Fallback: use only the 3 bytes we got (not ideal but better than nothing)
-              partial_uid = Enum.slice(uid1, 1, 3)
-              Logger.warning("Using partial UID (3 bytes): #{inspect(partial_uid)}")
-              error
+            _error ->
+              # Cascade level 2 failed - try reading from memory instead
+              Logger.warning("Cascade level 2 failed, trying to read UID from NTAG memory")
+              read_ntag_uid(ctx)
           end
         else
           # Standard 4-byte UID
