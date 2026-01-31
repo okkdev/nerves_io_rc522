@@ -68,6 +68,10 @@ defmodule Nerves.IO.RC522 do
             Logger.warning("Failed to select tag serial number: #{inspect(reason)}")
         end
 
+      {:error, :notag} ->
+        # Ignore no tag present
+        :noop
+
       {:error, reason} ->
         Logger.debug("Tag detection error: #{inspect(reason)}")
 
