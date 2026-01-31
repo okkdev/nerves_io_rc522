@@ -83,5 +83,5 @@ defmodule Nerves.IO.RC522 do
     {:noreply, state}
   end
 
-  defp schedule_poll, do: Process.send_after(self(), :poll, 50)
+  defp schedule_poll, do: Process.send_after(self(), :poll, 200)
 end
