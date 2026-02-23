@@ -207,7 +207,7 @@ defmodule RC522Elixir do
 
     {status, response_buf, un_len} = pcd_com_mf522(ctx, @pcd_transceive, buf)
 
-    Logger.debug("SELECT response: status=#{status}, len=#{un_len}, buf=#{inspect(response_buf)}")
+    # Logger.debug("SELECT response: status=#{status}, len=#{un_len}, buf=#{inspect(response_buf)}")
 
     # Should get SAK (Select Acknowledge) byte back
     if status == @tag_ok and length(response_buf) >= 1 do
@@ -238,14 +238,14 @@ defmodule RC522Elixir do
           # SELECT the first cascade level
           case pcd_select(ctx, @picc_anticoll1, uid1_with_bcc) do
             {:ok, sak, true} ->
-              Logger.debug(
-                "First cascade selected, SAK indicates more cascades (SAK: 0x#{Integer.to_string(sak, 16)})"
-              )
+              # Logger.debug(
+              #   "First cascade selected, SAK indicates more cascades (SAK: 0x#{Integer.to_string(sak, 16)})"
+              # )
 
               # Second cascade level for remaining bytes
               case pcd_anticoll(ctx, @picc_anticoll2) do
                 {:ok, uid2_with_bcc} ->
-                  Logger.debug("Cascade 2 successful, UID with BCC: #{inspect(uid2_with_bcc)}")
+                  # Logger.debug("Cascade 2 successful, UID with BCC: #{inspect(uid2_with_bcc)}")
 
                   # SELECT the second cascade level
                   case pcd_select(ctx, @picc_anticoll2, uid2_with_bcc) do
