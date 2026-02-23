@@ -169,7 +169,7 @@ defmodule RC522Elixir do
       Enum.reduce_while(1..pass, {i, collbits, nil, []}, fn _,
                                                             {i, collbits, status,
                                                              uc_com_mf522_buf} ->
-        buf = [cascade, 0x20 + collbits] ++ List.duplicate(0, i)
+        buf = [cascade, 0x40 + collbits] ++ List.duplicate(0, i)
         {new_status, new_buf, un_len} = pcd_com_mf522(ctx, @pcd_transceive, buf)
 
         if new_status == @tag_collision do
@@ -180,6 +180,9 @@ defmodule RC522Elixir do
           # Set the collision bit
           buf = List.update_at(buf, i - 1, fn val -> val ||| 1 <<< rem(collbits - 1, 8) end)
           # Update buffer shifting (mimic C logic, may need adjustment)
+          buf = List.replace_at(buf, 8, buf[6])
+          buf = List.replace_at(buf, 7, buf[5])
+          buf = List.replace_at(buf, 6, buf[4])
           buf = List.replace_at(buf, 5, buf[3])
           buf = List.replace_at(buf, 4, buf[2])
           buf = List.replace_at(buf, 3, buf[1])
