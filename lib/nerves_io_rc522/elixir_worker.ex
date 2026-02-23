@@ -62,7 +62,8 @@ defmodule Nerves.IO.RC522 do
               apply(module, function, [uid_str])
             end
 
-            RC522Elixir.pcd_halt(ctx)
+          # Note: We do not halt the tag here to allow for continuous reading. If you want to halt after reading, you can uncomment the line below.
+          # RC522Elixir.pcd_halt(ctx)
 
           {:error, reason} ->
             Logger.warning("Failed to select tag serial number: #{inspect(reason)}")
