@@ -169,7 +169,7 @@ defmodule RC522Elixir do
       Enum.reduce_while(1..pass, {i, collbits, nil, []}, fn _,
                                                             {i, collbits, status,
                                                              uc_com_mf522_buf} ->
-        buf = [cascade, 0x40 + collbits] ++ List.duplicate(0, i)
+        buf = [cascade, 0x38 + collbits] ++ List.duplicate(0, i)
         {new_status, new_buf, un_len} = pcd_com_mf522(ctx, @pcd_transceive, buf)
 
         if new_status == @tag_collision do
