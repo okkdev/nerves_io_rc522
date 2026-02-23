@@ -158,52 +158,38 @@ defmodule RC522Elixir do
     # Set BitFramingReg to 0x00
     write_reg(ctx, @bit_framing_reg, 0x00)
 
-    pass = 32
-    collbits = 0
-    i = 0
-    status = nil
-    uc_com_mf522_buf = []
+    # Build anticollision command: [CASCADE_LEVEL, NVB]
+    # NVB (Number of Valid Bits) = 0x20 means "send all UID bits"
+    buf = [cascade, 0x20]
 
-    # Loop for anticollision
-    result =
-      Enum.reduce_while(1..pass, {i, collbits, nil, []}, fn _,
-                                                            {i, collbits, status,
-                                                             uc_com_mf522_buf} ->
-        # Increased buffer to handle 7 bytes + cascade tag
-        buf = [cascade, 0x20 + collbits] ++ List.duplicate(0, 10)
-        {new_status, new_buf, un_len} = pcd_com_mf522(ctx, @pcd_transceive, buf)
+    {status, response_buf, un_len} = pcd_com_mf522(ctx, @pcd_transceive, buf)
 
-        if new_status == @tag_collision do
-          collbits = read_reg(ctx, @coll_reg) &&& 0x1F
-          collbits = if collbits == 0, do: 32, else: collbits
-          i = div(collbits - 1, 8) + 1
+    Logger.debug(
+      "Anticollision response: status=#{status}, len=#{un_len}, buf=#{inspect(response_buf)}"
+    )
 
-          # Set the collision bit
-          buf = List.update_at(buf, i + 1, fn val -> val ||| 1 <<< rem(collbits - 1, 8) end)
-
-          # Set BitFramingReg to (collbits % 8)
-          write_reg(ctx, @bit_framing_reg, rem(collbits, 8))
-          {:cont, {i, collbits, new_status, buf}}
-        else
-          {:halt, {i, collbits, new_status, new_buf}}
-        end
-      end)
-
-    {i, collbits, status, uc_com_mf522_buf} = result
-
-    # Check result
-    if status == @tag_ok and length(uc_com_mf522_buf) >= 5 do
-      # Get serial number and check (now handles 5 bytes: 4 UID + 1 BCC)
-      snr = Enum.take(uc_com_mf522_buf, 4)
+    # Check result - should get 5 bytes (4 UID + 1 BCC)
+    if status == @tag_ok and length(response_buf) >= 5 do
+      # Get serial number and check BCC (Block Check Character)
+      snr = Enum.take(response_buf, 4)
       snr_check = Enum.reduce(snr, 0, &Bitwise.bxor/2)
-      snr_check_val = Enum.at(uc_com_mf522_buf, 4)
+      snr_check_val = Enum.at(response_buf, 4)
+
+      Logger.debug(
+        "UID bytes: #{inspect(snr)}, BCC calculated: #{snr_check}, BCC received: #{snr_check_val}"
+      )
 
       if snr_check != snr_check_val do
+        Logger.error("BCC check failed!")
         {:error, :tag_err}
       else
         {:ok, snr}
       end
     else
+      Logger.error(
+        "Anticollision failed: status=#{status}, expected 5+ bytes, got #{length(response_buf)}"
+      )
+
       {:error, status}
     end
   end
