@@ -169,7 +169,8 @@ defmodule RC522Elixir do
       Enum.reduce_while(1..pass, {i, collbits, nil, []}, fn _,
                                                             {i, collbits, status,
                                                              uc_com_mf522_buf} ->
-        buf = [cascade, 0x38 + collbits] ++ List.duplicate(0, i)
+        # Increased buffer to handle 7 bytes + cascade tag
+        buf = [cascade, 0x20 + collbits] ++ List.duplicate(0, 10)
         {new_status, new_buf, un_len} = pcd_com_mf522(ctx, @pcd_transceive, buf)
 
         if new_status == @tag_collision do
@@ -178,15 +179,7 @@ defmodule RC522Elixir do
           i = div(collbits - 1, 8) + 1
 
           # Set the collision bit
-          buf = List.update_at(buf, i - 1, fn val -> val ||| 1 <<< rem(collbits - 1, 8) end)
-          # Update buffer shifting (mimic C logic, may need adjustment)
-          buf = List.replace_at(buf, 8, buf[6])
-          buf = List.replace_at(buf, 7, buf[5])
-          buf = List.replace_at(buf, 6, buf[4])
-          buf = List.replace_at(buf, 5, buf[3])
-          buf = List.replace_at(buf, 4, buf[2])
-          buf = List.replace_at(buf, 3, buf[1])
-          buf = List.replace_at(buf, 2, buf[0])
+          buf = List.update_at(buf, i + 1, fn val -> val ||| 1 <<< rem(collbits - 1, 8) end)
 
           # Set BitFramingReg to (collbits % 8)
           write_reg(ctx, @bit_framing_reg, rem(collbits, 8))
@@ -199,8 +192,8 @@ defmodule RC522Elixir do
     {i, collbits, status, uc_com_mf522_buf} = result
 
     # Check result
-    if status == @tag_ok do
-      # Get serial number and check
+    if status == @tag_ok and length(uc_com_mf522_buf) >= 5 do
+      # Get serial number and check (now handles 5 bytes: 4 UID + 1 BCC)
       snr = Enum.take(uc_com_mf522_buf, 4)
       snr_check = Enum.reduce(snr, 0, &Bitwise.bxor/2)
       snr_check_val = Enum.at(uc_com_mf522_buf, 4)
@@ -212,6 +205,48 @@ defmodule RC522Elixir do
       end
     else
       {:error, status}
+    end
+  end
+
+  def select_tag_sn(ctx) do
+    # First cascade level
+    case pcd_anticoll(ctx, @picc_anticoll1) do
+      {:ok, uid1} ->
+        # Check if this is a 7-byte UID (cascade tag 0x88)
+        if Enum.at(uid1, 0) == 0x88 do
+          Logger.info("Detected 7-byte UID card, running second cascade...")
+
+          # Second cascade level for remaining bytes
+          case pcd_anticoll(ctx, @picc_anticoll2) do
+            {:ok, uid2} ->
+              # Combine: uid1[1,2,3] + uid2[0,1,2,3] = 7 bytes
+              full_uid = Enum.slice(uid1, 1, 3) ++ Enum.take(uid2, 4)
+
+              uid_str =
+                full_uid
+                |> Enum.map(&(Integer.to_string(&1, 16) |> String.pad_leading(2, "0")))
+                |> Enum.join("")
+
+              Logger.info("Tag UID (7-byte NTAG213): #{uid_str}")
+              {:ok, full_uid, 7}
+
+            error ->
+              Logger.error("Failed second cascade: #{inspect(error)}")
+              error
+          end
+        else
+          # Regular 4-byte UID
+          uid_str =
+            uid1
+            |> Enum.map(&(Integer.to_string(&1, 16) |> String.pad_leading(2, "0")))
+            |> Enum.join("")
+
+          Logger.info("Tag UID (4-byte): #{uid_str}")
+          {:ok, uid1, 4}
+        end
+
+      error ->
+        error
     end
   end
 
@@ -460,26 +495,6 @@ defmodule RC522Elixir do
 
       other ->
         other
-    end
-  end
-
-  def select_tag_sn(ctx) do
-    case pcd_anticoll(ctx, @picc_anticoll1) do
-      {:ok, uid1} ->
-        # Use 4 bytes from first anticollision for all cards
-        # NTAG213 cards will have [0x88, uid0, uid1, uid2] (maintains DB compatibility. ManaBar cards use 7-byte UIDs)
-        # Regular 4-byte cards will have [uid0, uid1, uid2, uid3]
-        uid_str =
-          uid1
-          |> Enum.map(&(Integer.to_string(&1, 16) |> String.pad_leading(2, "0")))
-          |> Enum.join("")
-
-        card_type = if Enum.at(uid1, 0) == 0x88, do: "NTAG213, 4-byte partial", else: "4-byte"
-        Logger.info("Tag UID (#{card_type}): #{uid_str}")
-        {:ok, uid1, 4}
-
-      error ->
-        error
     end
   end
 
