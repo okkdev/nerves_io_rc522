@@ -170,10 +170,13 @@ defmodule RC522Elixir do
 
     # Check result - should get 5 bytes (4 UID + 1 BCC)
     if status == @tag_ok and length(response_buf) >= 5 do
-      # Get serial number and check BCC (Block Check Character)
-      snr = Enum.take(response_buf, 4)
+      # Get the full 5 bytes (4 UID + 1 BCC)
+      uid_with_bcc = Enum.take(response_buf, 5)
+
+      # Verify BCC
+      snr = Enum.take(uid_with_bcc, 4)
       snr_check = Enum.reduce(snr, 0, &Bitwise.bxor/2)
-      snr_check_val = Enum.at(response_buf, 4)
+      snr_check_val = Enum.at(uid_with_bcc, 4)
 
       Logger.debug(
         "UID bytes: #{inspect(snr)}, BCC calculated: #{snr_check}, BCC received: #{snr_check_val}"
@@ -183,7 +186,8 @@ defmodule RC522Elixir do
         Logger.error("BCC check failed!")
         {:error, :tag_err}
       else
-        {:ok, snr}
+        # Return the full 5 bytes for SELECT command
+        {:ok, uid_with_bcc}
       end
     else
       Logger.error(
@@ -194,44 +198,119 @@ defmodule RC522Elixir do
     end
   end
 
+  def pcd_select(ctx, cascade, uid_with_bcc) do
+    # uid_with_bcc should be 5 bytes: [UID0, UID1, UID2, UID3, BCC]
+    # Build SELECT command: [CASCADE_LEVEL, NVB=0x70, UID[0..4]]
+    # NVB=0x70 means we're sending all 5 bytes (4 UID + 1 BCC)
+    buf = [cascade, 0x70] ++ uid_with_bcc
+    buf = calulate_crc(ctx, buf, length(buf))
+
+    {status, response_buf, un_len} = pcd_com_mf522(ctx, @pcd_transceive, buf)
+
+    Logger.debug("SELECT response: status=#{status}, len=#{un_len}, buf=#{inspect(response_buf)}")
+
+    # Should get SAK (Select Acknowledge) byte back
+    if status == @tag_ok and length(response_buf) >= 1 do
+      sak = Enum.at(response_buf, 0)
+      Logger.debug("SAK: 0x#{Integer.to_string(sak, 16)}")
+
+      # Check if cascade bit is set (bit 2), meaning more UID bytes follow
+      cascade_bit_set = (sak &&& 0x04) != 0
+      {:ok, sak, cascade_bit_set}
+    else
+      Logger.error("SELECT failed: status=#{status}")
+      {:error, status}
+    end
+  end
+
   def select_tag_sn(ctx) do
+    Logger.debug("Starting anticollision cascade 1...")
+
     # First cascade level
     case pcd_anticoll(ctx, @picc_anticoll1) do
-      {:ok, uid1} ->
+      {:ok, uid1_with_bcc} ->
+        Logger.debug("Cascade 1 successful, UID with BCC: #{inspect(uid1_with_bcc)}")
+
         # Check if this is a 7-byte UID (cascade tag 0x88)
-        if Enum.at(uid1, 0) == 0x88 do
-          Logger.info("Detected 7-byte UID card, running second cascade...")
+        if Enum.at(uid1_with_bcc, 0) == 0x88 do
+          Logger.info("Detected 7-byte UID card (cascade tag 0x88)")
 
-          # Second cascade level for remaining bytes
-          case pcd_anticoll(ctx, @picc_anticoll2) do
-            {:ok, uid2} ->
-              # Combine: uid1[1,2,3] + uid2[0,1,2,3] = 7 bytes
-              full_uid = Enum.slice(uid1, 1, 3) ++ Enum.take(uid2, 4)
+          # SELECT the first cascade level
+          case pcd_select(ctx, @picc_anticoll1, uid1_with_bcc) do
+            {:ok, sak, true} ->
+              Logger.debug(
+                "First cascade selected, SAK indicates more cascades (SAK: 0x#{Integer.to_string(sak, 16)})"
+              )
 
-              uid_str =
-                full_uid
-                |> Enum.map(&(Integer.to_string(&1, 16) |> String.pad_leading(2, "0")))
-                |> Enum.join("")
+              # Second cascade level for remaining bytes
+              case pcd_anticoll(ctx, @picc_anticoll2) do
+                {:ok, uid2_with_bcc} ->
+                  Logger.debug("Cascade 2 successful, UID with BCC: #{inspect(uid2_with_bcc)}")
 
-              Logger.info("Tag UID (7-byte NTAG213): #{uid_str}")
-              {:ok, full_uid, 7}
+                  # SELECT the second cascade level
+                  case pcd_select(ctx, @picc_anticoll2, uid2_with_bcc) do
+                    {:ok, _sak, _} ->
+                      # Combine UIDs: uid1[1,2,3] + uid2[0,1,2,3] = 7 bytes
+                      # Skip first byte (0x88 cascade tag) and BCC from first cascade
+                      # Take 4 UID bytes from second cascade (skip BCC)
+                      full_uid = Enum.slice(uid1_with_bcc, 1, 3) ++ Enum.take(uid2_with_bcc, 4)
+
+                      uid_str =
+                        full_uid
+                        |> Enum.map(&(Integer.to_string(&1, 16) |> String.pad_leading(2, "0")))
+                        |> Enum.join("")
+
+                      Logger.info("Tag UID (7-byte NTAG213): #{uid_str}")
+                      {:ok, full_uid, 7}
+
+                    error ->
+                      Logger.error("Failed to SELECT second cascade: #{inspect(error)}")
+                      error
+                  end
+
+                error ->
+                  Logger.error("Failed second cascade anticollision: #{inspect(error)}")
+                  error
+              end
+
+            {:ok, sak, false} ->
+              Logger.warning(
+                "First cascade selected but SAK doesn't indicate more cascades (SAK: 0x#{Integer.to_string(sak, 16)})"
+              )
+
+              {:error, :unexpected_sak}
 
             error ->
-              Logger.error("Failed second cascade: #{inspect(error)}")
+              Logger.error("Failed to SELECT first cascade: #{inspect(error)}")
               error
           end
         else
-          # Regular 4-byte UID
-          uid_str =
-            uid1
-            |> Enum.map(&(Integer.to_string(&1, 16) |> String.pad_leading(2, "0")))
-            |> Enum.join("")
+          # Regular 4-byte UID - still need to SELECT it
+          case pcd_select(ctx, @picc_anticoll1, uid1_with_bcc) do
+            {:ok, _sak, _} ->
+              # Take only the 4 UID bytes (skip BCC)
+              uid1 = Enum.take(uid1_with_bcc, 4)
 
-          Logger.info("Tag UID (4-byte): #{uid_str}")
-          {:ok, uid1, 4}
+              uid_str =
+                uid1
+                |> Enum.map(&(Integer.to_string(&1, 16) |> String.pad_leading(2, "0")))
+                |> Enum.join("")
+
+              Logger.info("Tag UID (4-byte): #{uid_str}")
+              {:ok, uid1, 4}
+
+            error ->
+              Logger.error("Failed to SELECT tag: #{inspect(error)}")
+              error
+          end
         end
 
+      {:error, status} ->
+        Logger.error("Anticollision cascade 1 failed with status: #{status}")
+        {:error, status}
+
       error ->
+        Logger.error("Unexpected error in cascade 1: #{inspect(error)}")
         error
     end
   end
