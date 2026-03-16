@@ -164,9 +164,9 @@ defmodule RC522Elixir do
 
     {status, response_buf, un_len} = pcd_com_mf522(ctx, @pcd_transceive, buf)
 
-    Logger.debug(
-      "Anticollision response: status=#{status}, len=#{un_len}, buf=#{inspect(response_buf)}"
-    )
+    # Logger.debug( # For debugging
+    #   "Anticollision response: status=#{status}, len=#{un_len}, buf=#{inspect(response_buf)}"
+    # )
 
     # Check result - should get 5 bytes (4 UID + 1 BCC)
     if status == @tag_ok and length(response_buf) >= 5 do
@@ -178,9 +178,9 @@ defmodule RC522Elixir do
       snr_check = Enum.reduce(snr, 0, &Bitwise.bxor/2)
       snr_check_val = Enum.at(uid_with_bcc, 4)
 
-      Logger.debug(
-        "UID bytes: #{inspect(snr)}, BCC calculated: #{snr_check}, BCC received: #{snr_check_val}"
-      )
+      # Logger.debug( # For debuggign
+      #   "UID bytes: #{inspect(snr)}, BCC calculated: #{snr_check}, BCC received: #{snr_check_val}"
+      # )
 
       if snr_check != snr_check_val do
         Logger.error("BCC check failed!")
@@ -212,7 +212,7 @@ defmodule RC522Elixir do
     # Should get SAK (Select Acknowledge) byte back
     if status == @tag_ok and length(response_buf) >= 1 do
       sak = Enum.at(response_buf, 0)
-      Logger.debug("SAK: 0x#{Integer.to_string(sak, 16)}")
+      # Logger.debug("SAK: 0x#{Integer.to_string(sak, 16)}") # for debugging
 
       # Check if cascade bit is set (bit 2), meaning more UID bytes follow
       cascade_bit_set = (sak &&& 0x04) != 0
@@ -224,12 +224,12 @@ defmodule RC522Elixir do
   end
 
   def select_tag_sn(ctx) do
-    Logger.debug("Starting anticollision cascade 1...")
+    # Logger.debug("Starting anticollision cascade 1...") # for debugging
 
     # First cascade level
     case pcd_anticoll(ctx, @picc_anticoll1) do
       {:ok, uid1_with_bcc} ->
-        Logger.debug("Cascade 1 successful, UID with BCC: #{inspect(uid1_with_bcc)}")
+        # Logger.debug("Cascade 1 successful, UID with BCC: #{inspect(uid1_with_bcc)}") # for debugging
 
         # Check if this is a 7-byte UID (cascade tag 0x88)
         if Enum.at(uid1_with_bcc, 0) == 0x88 do
@@ -245,7 +245,7 @@ defmodule RC522Elixir do
               # Second cascade level for remaining bytes
               case pcd_anticoll(ctx, @picc_anticoll2) do
                 {:ok, uid2_with_bcc} ->
-                  # Logger.debug("Cascade 2 successful, UID with BCC: #{inspect(uid2_with_bcc)}")
+                  # Logger.debug("Cascade 2 successful, UID with BCC: #{inspect(uid2_with_bcc)}") # for debugging
 
                   # SELECT the second cascade level
                   case pcd_select(ctx, @picc_anticoll2, uid2_with_bcc) do
