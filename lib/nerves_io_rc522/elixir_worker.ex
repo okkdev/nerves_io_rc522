@@ -16,6 +16,8 @@ defmodule Nerves.IO.RC522 do
   end
 
   def init(opts) do
+    # Delay to ensure SPI and GPIO are ready
+    Process.sleep(1000)
     Logger.info("RC522 worker starting - initializing SPI and GPIO")
 
     # Extract callback if provided
