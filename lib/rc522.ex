@@ -6,7 +6,7 @@ defmodule RC522Elixir do
   import Bitwise
   require Logger
 
-  @spi_bus "spidev0.0"
+  @default_spi_bus "spidev0.0"
   # GPIO25 (physical pin 22)
   @rst_gpio 25
 
@@ -61,16 +61,50 @@ defmodule RC522Elixir do
 
   # Open SPI and RST GPIO
   def start_link() do
-    Logger.info("Opening SPI bus: #{@spi_bus}")
-    {:ok, spi_ref} = Circuits.SPI.open(@spi_bus)
+    configured_bus =
+      Application.get_env(:nerves_io_rc522, :spi_bus, @default_spi_bus) |> to_string()
 
-    Logger.info("Opening GPIO #{@rst_gpio} for reset pin")
-    {:ok, rst_ref} = Circuits.GPIO.open(@rst_gpio, :output)
-    # Set RST high
-    Circuits.GPIO.write(rst_ref, 1)
+    available_buses = Circuits.SPI.bus_names()
+    selected_bus = pick_spi_bus(configured_bus, available_buses)
 
-    Logger.info("RC522 hardware initialized")
-    {:ok, %{spi: spi_ref, rst: rst_ref}}
+    Logger.info(
+      "Opening SPI bus: #{selected_bus} (configured=#{configured_bus}, available=#{inspect(available_buses)})"
+    )
+
+    with {:ok, spi_ref} <- Circuits.SPI.open(selected_bus),
+         {:ok, rst_ref} <- Circuits.GPIO.open(@rst_gpio, :output) do
+      Logger.info("Opening GPIO #{@rst_gpio} for reset pin")
+
+      # Set RST high
+      Circuits.GPIO.write(rst_ref, 1)
+
+      Logger.info("RC522 hardware initialized")
+      {:ok, %{spi: spi_ref, rst: rst_ref}}
+    else
+      {:error, reason} = error ->
+        Logger.error(
+          "RC522 hardware init failed: #{inspect(reason)} (bus=#{selected_bus}, available=#{inspect(available_buses)})"
+        )
+
+        error
+    end
+  end
+
+  defp pick_spi_bus(configured_bus, available_buses) do
+    cond do
+      configured_bus in available_buses ->
+        configured_bus
+
+      available_buses != [] ->
+        Logger.warning(
+          "Configured SPI bus #{configured_bus} not found. Falling back to #{hd(available_buses)}"
+        )
+
+        hd(available_buses)
+
+      true ->
+        configured_bus
+    end
   end
 
   # Write to RC522 register
