@@ -45,7 +45,7 @@ defmodule RC522Elixir do
   @picc_read 0x30
   @picc_write 0xA0
   @picc_halt 0x50
-  @picc_reqidl 0x26
+  @picc_reqidl 0x52
   @picc_anticoll1 0x93
   @picc_anticoll2 0x95
   @picc_anticoll3 0x97
